@@ -1,9 +1,9 @@
-import sys
 import socket
 import threading
+import sys
 
-
-username = input('Input your username:')
+# Choose a Username
+username = input('Input your username: ')
 
 # Client Configuration
 HOST = '127.0.0.1'  # Server's IP address
@@ -13,19 +13,35 @@ PORT = 5000         # Server's port number
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((HOST, PORT))
 
+# Receive initial prompt from the server
+def receive_initial_prompt():
+    while True:
+        try:
+            message = client.recv(1024).decode('utf-8')
+            if message == 'Username':
+                client.send(username.encode('utf-8'))
+                break
+        except:
+            print('An error occurred during the initial connection.')
+            client.close()
+            sys.exit()
+
 # Receive Messages from Server
 def receive_messages():
     while True:
         try:
             message = client.recv(1024)
+            if not message:
+                # Connection closed
+                print('Connection closed by the server.')
+                client.close()
+                break
             if message.decode('utf-8').startswith('FILE'):
-                # Start receiving the file
+                # Handle file reception
                 filename = message.decode('utf-8').split(' ', 1)[1]
                 print(f'Receiving file "{filename}"...')
                 receive_file(filename)
                 print(f'File "{filename}" received.')
-            elif message.decode('utf-8') == 'Username':
-                client.send(username.encode('utf-8'))
             else:
                 message_decoded = message.decode('utf-8')
                 if not message_decoded.startswith(f'{username}:'):
@@ -35,11 +51,15 @@ def receive_messages():
             client.close()
             break
 
+# Send Messages to Server
 def send_messages():
     while True:
         message_content = input('')
-        if message_content.startswith('/send '):
-            # Extract the filename from the command
+        if message_content == '/quit':
+            client.close()
+            print('You have disconnected from the chat.')
+            break
+        elif message_content.startswith('/send '):
             filename = message_content.split(' ', 1)[1]
             send_file(filename)
         else:
@@ -52,34 +72,37 @@ def send_messages():
             sys.stdout.flush()
             print(f'Me: {message_content}')
 
-
+# Function to Send Files
 def send_file(filename):
     try:
-        # Send the initial message indicating a file transfer
         client.send(f'FILE {filename}'.encode('utf-8'))
         with open(filename, 'rb') as f:
             while True:
-                # Read the file in chunks
                 bytes_read = f.read(1024)
                 if not bytes_read:
-                    # File transmission is done
                     break
                 client.send(bytes_read)
-        # Send an EOF message to signal the end of the file
         client.send('EOF'.encode('utf-8'))
         print(f'File "{filename}" has been sent.')
     except FileNotFoundError:
         print(f'File "{filename}" not found.')
 
+# Function to Receive Files
 def receive_file(filename):
+    data = b''
+    while True:
+        bytes_read = client.recv(1024)
+        if b'EOF' in bytes_read:
+            # Split the data at 'EOF'
+            data_parts = bytes_read.split(b'EOF')
+            data += data_parts[0]
+            break
+        data += bytes_read
     with open(f'received_{filename}', 'wb') as f:
-        while True:
-            bytes_read = client.recv(1024)
-            if bytes_read == b'EOF':
-                # End of file transmission
-                break
-            f.write(bytes_read)
+        f.write(data)
 
+# Start the initial prompt handling
+receive_initial_prompt()
 
 # Start Threads for Receiving and Sending
 receive_thread = threading.Thread(target=receive_messages)
