@@ -1,0 +1,6 @@
+This is example file txt
+Inlcudes muti line of
+
+Infomation
+
+End of the file.
